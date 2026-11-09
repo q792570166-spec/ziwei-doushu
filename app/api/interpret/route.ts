@@ -7,8 +7,7 @@ export async function POST(req: Request) {
 
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
-      console.error('DEEPSEEK_API_KEY is missing in environment variables');
-      return NextResponse.json({ error: '服务器未配置 DEEPSEEK_API_KEY 环境变量' }, { status: 500 });
+      return NextResponse.json({ error: '环境变量未配置 DEEPSEEK_API_KEY' }, { status: 500 });
     }
 
     const response = await fetch('https://api.deepseek.com/chat/completions', {
@@ -29,23 +28,24 @@ export async function POST(req: Request) {
             content: `这是我的紫微斗数命盘数据：${JSON.stringify(chartData)}，请帮我分析命宫、事业和财运。`,
           },
         ],
-        stream: false,
+        stream: true, // 开启流式传输，匹配前端组件
       }),
     });
 
-    const data = await response.json();
-
     if (!response.ok) {
-      console.error('DeepSeek API raw error:', JSON.stringify(data));
-      // 将 DeepSeek 返回的具体错误信息直接返回给前端显示，方便排查
-      const errorMsg = data.error?.message || JSON.stringify(data);
-      return NextResponse.json({ error: `DeepSeek 报错: ${errorMsg}` }, { status: response.status });
+      const errorText = await response.text();
+      return NextResponse.json({ error: `DeepSeek 错误: ${errorText}` }, { status: response.status });
     }
 
-    const result = data.choices?.[0]?.message?.content || '未返回有效解读数据';
-    return NextResponse.json({ result });
+    // 直接将 DeepSeek 的流式返回转发给前端
+    return new Response(response.body, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
   } catch (error: any) {
-    console.error('Server internal catch error:', error);
     return NextResponse.json({ error: `服务器异常: ${error.message}` }, { status: 500 });
   }
 }
