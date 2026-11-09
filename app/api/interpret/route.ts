@@ -28,7 +28,7 @@ export async function POST(req: Request) {
             content: `这是我的紫微斗数命盘数据：${JSON.stringify(chartData)}，请帮我分析命宫、事业和财运。`,
           },
         ],
-        stream: false, // 改为非流式，确保数据完整打包返回，彻底解决 Netlify 缓存卡死问题
+        stream: false,
       }),
     });
 
@@ -39,7 +39,13 @@ export async function POST(req: Request) {
     }
 
     const result = data.choices?.[0]?.message?.content || '未返回有效解读数据';
-    return NextResponse.json({ result });
+    
+    // 强制直接以纯 JSON 形式返回结果，避免任何流式卡顿
+    return NextResponse.json({ result }, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
   } catch (error: any) {
     return NextResponse.json({ error: `服务器异常: ${error.message}` }, { status: 500 });
   }
