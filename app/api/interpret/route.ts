@@ -28,23 +28,22 @@ export async function POST(req: Request) {
             content: `这是我的紫微斗数命盘数据：${JSON.stringify(chartData)}，请帮我分析命宫、事业和财运。`,
           },
         ],
-        stream: false,
+        stream: true, // 开启流式传输，完美匹配前端组件的打字机接收逻辑
       }),
     });
 
-    const data = await response.json();
-
     if (!response.ok) {
-      return NextResponse.json({ error: data.error?.message || '调用 DeepSeek API 失败' }, { status: response.status });
+      const errorText = await response.text();
+      return NextResponse.json({ error: `DeepSeek 错误: ${errorText}` }, { status: response.status });
     }
 
-    const result = data.choices?.[0]?.message?.content || '未返回有效解读数据';
-    
-    // 同时兼容前端可能读取的 result、content、text 等多种常见字段名，彻底杜绝前端卡死
-    return NextResponse.json({ 
-      result: result,
-      content: result,
-      text: result
+    // 将 DeepSeek 的标准流式响应透传给前端
+    return new Response(response.body, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
     });
   } catch (error: any) {
     return NextResponse.json({ error: `服务器异常: ${error.message}` }, { status: 500 });
