@@ -6,16 +6,17 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const chartData = body.chartData || body.chart;
+    const userMessages = body.messages || []; // 获取前端传过来的对话历史与最新提问
 
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
       return NextResponse.json({ error: '环境变量未配置 DEEPSEEK_API_KEY' }, { status: 500 });
     }
 
-    // 1. 读取本地 knowledge 或 library 里的内置资料库内容作为专业背景
+    // 1. 读取本地知识库资料
     let localKnowledge = '';
     try {
-      const knowledgeDir = path.join(process.cwd(), 'knowledge'); // 或者 'library'
+      const knowledgeDir = path.join(process.cwd(), 'knowledge');
       if (fs.existsSync(knowledgeDir)) {
         const files = fs.readdirSync(knowledgeDir);
         for (const file of files) {
@@ -27,19 +28,38 @@ export async function POST(req: Request) {
         }
       }
     } catch (e) {
-      console.log('读取本地知识库失败，使用默认设定', e);
+      console.log('读取知识库失败', e);
     }
 
-    // 2. 构造强大的系统提示词，强制要求 AI 结合内置资料深度解读
-    const systemPrompt = `你是一位精通紫微斗数的命理大师，严格遵循本项目内置的专业命理学体系和核心资料进行解盘。
-绝对不要说空洞、模棱两可的泛泛之谈，必须结合用户提供的具体星曜、四化、宫位及以下内置专业资料进行深度、硬核、逻辑严密的剖析：
+    // 2. 系统提示词：保留专业度，但允许针对不同问题灵活作答
+    const systemPrompt = `你是一位精通紫微斗数的命理大师，请根据用户提供的星盘格局，并严格结合本项目内置的专业资料回答问题。
+内部专业资料库：
+${localKnowledge || '（根据传统紫微斗数三方四正与四化飞化专业解答）'}
 
-【内部专业资料库内容】：
-${localKnowledge || '（请严格根据传统紫微斗数三方四正、星曜庙旺利陷及四化飞化进行专业、具体的深度解盘）'}
+【回答要求】：
+1. 必须针对用户当前提出的**具体问题**进行精准解答（如问感情就聚焦婚姻宫/夫妻宫，问财运就聚焦财帛宫/田宅宫，追问具体年份就看流年四化）。
+2. 切忌千篇一律地重复总论，必须扣紧用户的问题。`;
 
-请遵循以下输出原则：
-1. 逐宫逐星分析，指出具体某宫某星的吉凶象义，绝不大撒把说废话。
-2. 结合格局、四化飞化给出具体可执行的断语和建议。`;
+    // 3. 构建完整的对话上下文
+    let formattedMessages = [
+      { role: 'system', content: systemPrompt }
+    ];
+
+    if (userMessages.length > 0) {
+      // 如果前端传了对话历史，直接使用前端传过来的问题
+      // 并在最开始补充当前命盘数据作为背景
+      formattedMessages.push({
+        role: 'user',
+        content: `【我的命盘数据】：${JSON.stringify(chartData)}`
+      });
+      formattedMessages = formattedMessages.concat(userMessages);
+    } else {
+      // 默认单次解读提问
+      formattedMessages.push({
+        role: 'user',
+        content: `【我的命盘数据】：${JSON.stringify(chartData)}，请严格结合内置资料，为我详细深度剖析命宫与格局。`
+      });
+    }
 
     const response = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
@@ -49,16 +69,7 @@ ${localKnowledge || '（请严格根据传统紫微斗数三方四正、星曜�
       },
       body: JSON.stringify({
         model: 'deepseek-chat',
-        messages: [
-          {
-            role: 'system',
-            content: systemPrompt,
-          },
-          {
-            role: 'user',
-            content: `这是我的紫微斗数命盘数据：${JSON.stringify(chartData)}，请严格结合上述内部资料，为我详细深度剖析命宫、事业、财运及当前大限流年。`,
-          },
-        ],
+        messages: formattedMessages,
         stream: true,
       }),
     });
