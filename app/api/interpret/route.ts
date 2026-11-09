@@ -28,23 +28,18 @@ export async function POST(req: Request) {
             content: `这是我的紫微斗数命盘数据：${JSON.stringify(chartData)}，请帮我分析命宫、事业和财运。`,
           },
         ],
-        stream: true, // 开启流式传输，匹配前端组件
+        stream: false, // 改为非流式，确保数据完整打包返回，彻底解决 Netlify 缓存卡死问题
       }),
     });
 
+    const data = await response.json();
+
     if (!response.ok) {
-      const errorText = await response.text();
-      return NextResponse.json({ error: `DeepSeek 错误: ${errorText}` }, { status: response.status });
+      return NextResponse.json({ error: data.error?.message || '调用 DeepSeek API 失败' }, { status: response.status });
     }
 
-    // 直接将 DeepSeek 的流式返回转发给前端
-    return new Response(response.body, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      },
-    });
+    const result = data.choices?.[0]?.message?.content || '未返回有效解读数据';
+    return NextResponse.json({ result });
   } catch (error: any) {
     return NextResponse.json({ error: `服务器异常: ${error.message}` }, { status: 500 });
   }
