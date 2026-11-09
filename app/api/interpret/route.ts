@@ -40,11 +40,11 @@ export async function POST(req: Request) {
 
     const result = data.choices?.[0]?.message?.content || '未返回有效解读数据';
     
-    // 强制直接以纯 JSON 形式返回结果，避免任何流式卡顿
-    return NextResponse.json({ result }, {
-      headers: {
-        'Content-Type': 'application/json',
-      },
+    // 同时兼容前端可能读取的 result、content、text 等多种常见字段名，彻底杜绝前端卡死
+    return NextResponse.json({ 
+      result: result,
+      content: result,
+      text: result
     });
   } catch (error: any) {
     return NextResponse.json({ error: `服务器异常: ${error.message}` }, { status: 500 });
